@@ -206,3 +206,26 @@ class HitAdminTest(TestCase):
         self.assertEqual(len(Hit.objects.all()), 5)
         self.assertEqual(hit_count.hits, 5)
         self.assertEqual(len(BlacklistUserAgent.objects.all()), 5)
+
+
+class AdminPagesTest(TestCase):
+    """Render the real admin pages, so Django calls our overrides itself."""
+
+    def setUp(self):
+        user = User.objects.create_superuser('admin', 'admin@example.com', 'pw-for-tests-only')
+        self.client.force_login(user)
+        post = Post.objects.create(title='my title', content='my text')
+        hit_count = HitCount.objects.create(content_object=post)
+        Hit.objects.create(hitcount=hit_count, ip='127.0.0.1', user_agent='agent')
+
+    def test_changelists_render(self):
+        for name in ('hit', 'hitcount', 'blacklistip', 'blacklistuseragent'):
+            with self.subTest(name=name):
+                response = self.client.get(reverse('admin:hitcount_%s_changelist' % name))
+                self.assertEqual(response.status_code, 200)
+
+    def test_hit_changelist_actions(self):
+        response = self.client.get(reverse('admin:hitcount_hit_changelist'))
+        actions = [value for value, _label in response.context['action_form'].fields['action'].choices]
+        self.assertNotIn('delete_selected', actions)
+        self.assertIn('blacklist_ips', actions)

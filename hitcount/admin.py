@@ -23,8 +23,12 @@ class HitAdmin(admin.ModelAdmin):
     def has_add_permission(self, request):
         return False
 
-    def get_actions(self, request):
-        actions = super().get_actions(request)
+    def get_actions(self, request, action_location=None):
+        # Django >= 6.1 passes `action_location`; older versions don't know it
+        if action_location is None:
+            actions = super().get_actions(request)
+        else:
+            actions = super().get_actions(request, action_location=action_location)
         if 'delete_selected' in actions:
             del actions['delete_selected']
         return actions

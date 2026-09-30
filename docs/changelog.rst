@@ -22,7 +22,9 @@ released.
  * Removed ``hitcount.views._update_hit_count()`` (use ``HitCountMixin.hit_count()``),
    ``hitcount.views.update_hit_count_ajax()`` (use ``HitCountJSONView``) and
    ``hitcount.utils.RemovedInHitCount13Warning``, all deprecated since 1.2
- * Removed ``static/hitcount/hitcount-jquery.js``, deprecated since 1.2.
+ * ``static/hitcount/hitcount-jquery.js`` (the companion of
+   ``{% insert_hit_count_js_variables %}``) no longer needs jQuery; it is kept
+   under the same name so existing ``{% static %}`` references keep working.
    ``static/hitcount/jquery.postcsrf.js`` is still shipped
  * ``{% insert_hit_count_js %}`` no longer needs jQuery or ``jquery.postcsrf.js``:
    it uses ``fetch()`` and takes the CSRF token from the template context, so
@@ -40,6 +42,12 @@ released.
    ``hitcountPK`` instead of swallowing every exception with a bare ``except``
  * The hit-counting checks use ``.exists()`` instead of fetching rows
  * Invalid ``HITCOUNT_HITCOUNT_MODEL`` values raise ``ImproperlyConfigured``
+ * ``{% insert_hit_count_js %}`` and ``{% insert_hit_count_js_variables %}``
+   add the request's CSP nonce to their ``<script>`` tags when Django's
+   ``ContentSecurityPolicyMiddleware`` is used (Django 6.0+); previously a
+   nonce-based policy blocked them and no hits were counted
+ * ``HitAdmin.get_actions()`` accepts Django 6.1's ``action_location``
+   argument (fixes a ``RemovedInDjango70Warning``)
  * Allow IPv6 addresses `#123`_
  * Django 4+ migration for ``HitCount.content_type`` `#133`_
  * Explicit ``BigAutoField`` primary keys to silence ``models.W042`` `#131`_

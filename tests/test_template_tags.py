@@ -1,8 +1,10 @@
+import unittest
 from datetime import timedelta
 from unittest import mock
 
-from django.template import Context, Template, TemplateSyntaxError
-from django.test import TestCase
+import django
+from django.template import Context, RequestContext, Template, TemplateSyntaxError
+from django.test import RequestFactory, TestCase
 from django.utils import timezone
 
 from hitcount.models import Hit
@@ -311,3 +313,31 @@ class TemplateTagInsertHitCountJSTests(TestCase):
             self.render('{% insert_hit_count_js for post verbose %}', {'post': self.post})
         with self.assertRaises(TemplateSyntaxError):
             self.render('{% insert_hit_count_js for post %}', {'post': 'bob the baker'})
+
+
+@unittest.skipIf(django.VERSION < (6, 0), 'Django 6.0 added built-in CSP support')
+class TemplateTagCSPNonceTests(TestCase):
+
+    def setUp(self):
+        from django.utils.csp import LazyNonce
+
+        self.post = Post.objects.create(title='csp', content='post')
+        self.request = RequestFactory().get('/')
+        self.request._csp_nonce = LazyNonce()  # what ContentSecurityPolicyMiddleware does
+
+    def render(self, template, request):
+        context = RequestContext(request, {'post': self.post})
+        return Template('{% load hitcount_tags %}' + template).render(context)
+
+    def test_insert_js_uses_nonce(self):
+        out = self.render('{% insert_hit_count_js for post %}', self.request)
+        self.assertIn('<script nonce="%s">' % self.request._csp_nonce, out)
+
+    def test_insert_js_variables_uses_nonce(self):
+        out = self.render('{% insert_hit_count_js_variables for post %}', self.request)
+        self.assertIn('<script type="text/javascript" nonce="%s">' % self.request._csp_nonce, out)
+
+    def test_no_nonce_without_csp_middleware(self):
+        out = self.render('{% insert_hit_count_js for post %}', RequestFactory().get('/'))
+        self.assertIn('<script>', out)
+        self.assertNotIn('nonce', out)

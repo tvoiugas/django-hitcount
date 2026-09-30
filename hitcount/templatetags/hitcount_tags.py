@@ -4,11 +4,32 @@ from django import template
 from django.conf import settings
 from django.contrib.contenttypes.models import ContentType
 from django.urls import reverse
-from django.utils.html import escapejs
+from django.utils.html import escape, escapejs
 
 from hitcount.utils import get_hitcount_model
 
+try:  # Django >= 6.0
+    from django.middleware.csp import get_nonce
+except ImportError:
+    get_nonce = None
+
 register = template.Library()
+
+
+def csp_nonce_attr(context):
+    """
+    Returns ' nonce="..."' for our inline <script> tags when Django's
+    ContentSecurityPolicyMiddleware is active (Django >= 6.0), so that a
+    nonce-based policy does not block them. Using the nonce here also makes
+    the middleware add it to the Content-Security-Policy header.
+    """
+    request = getattr(context, 'request', None)
+    if get_nonce is None or request is None:
+        return ''
+    nonce = get_nonce(request)
+    if nonce is None:
+        return ''
+    return ' nonce="%s"' % escape(nonce)
 
 
 def get_hit_count_from_obj_variable(context, obj_variable, tag_name):
@@ -168,7 +189,7 @@ class WriteHitCountJavascriptVariables(template.Node):
     def render(self, context):
         hit_count = get_hit_count_from_obj_variable(context, self.obj_variable, 'insert_hit_count_js_variables')
 
-        js = '<script type="text/javascript">\n' + \
+        js = '<script type="text/javascript"%s>\n' % csp_nonce_attr(context) + \
             "var hitcountJS = {" + \
             "hitcountPK : '" + str(hit_count.pk) + "'," + \
             "hitcountURL : '" + str(reverse('hitcount:hit_ajax')) + "'};" + \
@@ -241,7 +262,7 @@ register.tag('get_hit_count_js_variables', get_hit_count_js_variables)
 class WriteHitCountJavascript(template.Node):
 
     JS_TEMPLATE = """
-<script>
+<script%(nonce_attr)s>
 (function () {
   var csrfToken = "%(csrf_token)s";
   if (!csrfToken) {
@@ -307,6 +328,7 @@ class WriteHitCountJavascript(template.Node):
         if csrf_token == 'NOTPROVIDED':
             csrf_token = ''
         return self.JS_TEMPLATE % {
+            'nonce_attr': csp_nonce_attr(context),
             'csrf_token': escapejs(csrf_token),
             'csrf_cookie_name': escapejs(settings.CSRF_COOKIE_NAME),
             'url': escapejs(reverse('hitcount:hit_ajax')),
