@@ -1,9 +1,9 @@
 from datetime import timedelta
 
-from django.db import models
 from django.conf import settings
-from django.utils import timezone
 from django.contrib.contenttypes.models import ContentType
+from django.db import models
+from django.utils import timezone
 
 
 class HitCountManager(models.Manager):

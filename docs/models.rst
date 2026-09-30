@@ -7,6 +7,7 @@ If you would like to add a reverse lookup in your own model to its related ``Hit
 
 ::
 
+    from django.contrib.contenttypes.fields import GenericRelation
     from django.db import models
 
     from hitcount.models import HitCountMixin

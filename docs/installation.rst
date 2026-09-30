@@ -8,10 +8,10 @@ Install django-hitcount::
 Add django-hitcount to your ``INSTALLED_APPS``::
 
     # settings.py
-    INSTALLED_APPS = (
+    INSTALLED_APPS = [
         ...
-        'hitcount'
-    )
+        'hitcount',
+    ]
 
 Perform database migration::
 
@@ -55,28 +55,52 @@ To see this in action see the `views`_.py code.
 HitCountJSONView
 ^^^^^^^^^^^^^^^^
 
-The ``hitcount.views.HitCountJSONView`` can be used to handle an AJAX POST request.  Django-hitcount comes with a bundled `jQuery plugin`_ for speeding up the ``$.post`` process by handling the retrieval of the CSRF token for you.
+The ``hitcount.views.HitCountJSONView`` can be used to handle an AJAX POST request.
 
 If you wish to use the ``HitCountJSONView`` in your project you first need to update your ``urls.py`` file to include the following::
 
     # urls.py
+    from django.urls import include, path
+
     urlpatterns = [
         ...
-        url(r'hitcount/', include('hitcount.urls', namespace='hitcount')),
+        path('hitcount/', include('hitcount.urls', namespace='hitcount')),
     ]
 
-Next, you will need to add the JavaScript Ajax request to your template.  To do this, use the ``{% get_hit_count_js_variables for post as [var_name] %}`` template tag to get the ``ajax_url`` and ``hitcount_pk`` for your object.  The ``hitcount_pk`` is needed for POST-ing to the ``HitCountJSONView``.
+The easiest way to send the request is the ``{% insert_hit_count_js %}`` template tag.  It writes a small, dependency-free ``<script>`` that POSTs the hit with the browser's ``fetch()`` API.  The CSRF token is taken from the template context (falling back to the CSRF cookie), so neither jQuery nor ``@ensure_csrf_cookie`` is needed::
 
-Here is an example of how all this might work together with the bundled `jQuery plugin`_.  It is taken from the `example project`_ and the jQuery can be modified to suit your needs.  In the example below it simply updates the template with the ``HitCountJSONView`` response after the Ajax call is complete.
+    {% load hitcount_tags %}
+    {% insert_hit_count_js for post %}
 
-::
+    {# or, to log the response to the browser console: #}
+    {% insert_hit_count_js for post debug %}
 
-    {% load staticfiles %}
+When the request finishes, a ``hitcount:counted`` event is dispatched on ``document`` with the ``HitCountJSONView`` response in ``event.detail`` (or ``hitcount:error`` if the request failed).  Register your listener before the tag if you want to react to the result, for example to update the page::
+
+    <script>
+    document.addEventListener("hitcount:counted", function (event) {
+      document.getElementById("hit-response").textContent = event.detail.hit_message;
+    });
+    </script>
+    {% insert_hit_count_js for post %}
+
+Writing your own JavaScript
+"""""""""""""""""""""""""""
+
+If you prefer to write the request yourself, use the ``{% get_hit_count_js_variables for post as [var_name] %}`` template tag to get the ``ajax_url`` and ``pk`` for your object.  The ``pk`` is needed for POST-ing to the ``HitCountJSONView``.  The request must:
+
+* be a ``POST`` with a ``hitcountPK`` form field
+* send the ``X-Requested-With: XMLHttpRequest`` header (other requests get a ``404``)
+* send the CSRF token in the ``X-CSRFToken`` header
+
+django-hitcount also still ships a small `jQuery plugin`_ that handles the CSRF token for you.  Here is an example taken from the `example project`_; note that the view rendering this template should be decorated with ``@ensure_csrf_cookie`` so that the cookie is set::
+
+    {% load static %}
     <script src="{% static 'hitcount/jquery.postcsrf.js' %}"></script>
 
     {% load hitcount_tags %}
     {% get_hit_count_js_variables for post as hitcount %}
-    <script type="text/javascript">
+    <script>
     jQuery(document).ready(function($) {
       // use the template tags in our JavaScript call
       $.postCSRF("{{ hitcount.ajax_url }}", { hitcountPK : "{{ hitcount.pk }}" })
@@ -112,7 +136,7 @@ There are different methods for *displaying* hits:
 
 * `Template Tags`_: provide a robust way to get related counts
 * `Views`_: allows you to wrap a class-based view and inject additional context into your template
-* `Models`_: can have a generic relation to their respective ``HitCount``
+* :doc:`Models </models>`: can have a generic relation to their respective ``HitCount``
 
 Template Tags
 ^^^^^^^^^^^^^

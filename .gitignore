@@ -6,3 +6,18 @@
 *.sublime-*
 venv/
 .idea/
+
+# build / tooling
+*.egg-info/
+build/
+dist/
+.venv/
+.tox/
+.coverage
+coverage.xml
+htmlcov/
+.pytest_cache/
+.ruff_cache/
+__pycache__/
+docs/_build/
+example_project/db.sqlite3

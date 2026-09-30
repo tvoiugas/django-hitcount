@@ -3,9 +3,10 @@ Example Project
 
 There is an `example project`_ the demonstrates the functionality of this app.  It's fairly easy to get this working using the Django development server.  Be sure to run this inside your own ``virtualenv`` (but who doesn't, these days?!). ::
 
-    $ git clone git@github.com:thornomad/django-hitcount.git
-    $ cd django-hitcount/example_project
-    $ pip install -r requirements.txt   # sqlite requires pytz
+    $ git clone https://github.com/thornomad/django-hitcount.git
+    $ cd django-hitcount
+    $ pip install -e .                  # installs Django too
+    $ cd example_project
     $ python manage.py migrate          # will load some data fixtures for you
     $ python manage.py createsuperuser  # for access to the admin portion
     $ python manage.py runserver        # should be all set!

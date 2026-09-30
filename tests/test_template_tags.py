@@ -1,15 +1,8 @@
-# -*- coding: utf-8 -*-
-from __future__ import unicode_literals
-
 from datetime import timedelta
+from unittest import mock
 
-try:
-    import unittest.mock as mock
-except ImportError:
-    import mock
-
+from django.template import Context, Template, TemplateSyntaxError
 from django.test import TestCase
-from django.template import Template, Context, TemplateSyntaxError
 from django.utils import timezone
 
 from hitcount.models import Hit
@@ -270,3 +263,51 @@ class TemplateTagGetHitCountTests(TestCase):
             TemplateSyntaxError, render,
             "{% load hitcount_tags %}{% insert_hit_count_js_variables for post %}",
             {"post": 'bob the baker'})
+
+
+class TemplateTagInsertHitCountJSTests(TestCase):
+
+    def setUp(self):
+        self.post = Post.objects.create(title='js', content='post')
+
+    def render(self, template, context):
+        return Template('{% load hitcount_tags %}' + template).render(Context(context))
+
+    def test_insert_js(self):
+        out = self.render('{% insert_hit_count_js for post %}', {'post': self.post})
+        pk = self.post.hit_count.pk
+
+        self.assertIn('fetch("/hitcount/hit/ajax/"', out)
+        self.assertIn('encodeURIComponent("%s")' % pk, out)
+        self.assertIn('"X-Requested-With": "XMLHttpRequest"', out)
+        self.assertIn('hitcount:counted', out)
+        self.assertNotIn('jQuery', out)
+        self.assertNotIn('console.log', out)
+
+    def test_insert_js_debug(self):
+        out = self.render('{% insert_hit_count_js for post debug %}', {'post': self.post})
+        self.assertIn('console.log("django-hitcount: AJAX POST succeeded.", data);', out)
+        self.assertIn('console.log("django-hitcount: AJAX POST failed.", error);', out)
+
+    def test_insert_js_uses_context_csrf_token(self):
+        out = self.render('{% insert_hit_count_js for post %}',
+                          {'post': self.post, 'csrf_token': 'abc123'})
+        self.assertIn('var csrfToken = "abc123";', out)
+
+    def test_insert_js_ignores_missing_csrf_token(self):
+        out = self.render('{% insert_hit_count_js for post %}',
+                          {'post': self.post, 'csrf_token': 'NOTPROVIDED'})
+        self.assertIn('var csrfToken = "";', out)
+
+    def test_insert_js_escapes_csrf_token(self):
+        out = self.render('{% insert_hit_count_js for post %}',
+                          {'post': self.post, 'csrf_token': '"</script>'})
+        self.assertIn('var csrfToken = "\\u0022\\u003C/script\\u003E";', out)
+
+    def test_parsing_errors(self):
+        with self.assertRaises(TemplateSyntaxError):
+            self.render('{% insert_hit_count_js post %}', {'post': self.post})
+        with self.assertRaises(TemplateSyntaxError):
+            self.render('{% insert_hit_count_js for post verbose %}', {'post': self.post})
+        with self.assertRaises(TemplateSyntaxError):
+            self.render('{% insert_hit_count_js for post %}', {'post': 'bob the baker'})

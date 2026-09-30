@@ -1,18 +1,12 @@
-# -*- coding: utf-8 -*-
-from __future__ import unicode_literals
-
-from django.test import TestCase, RequestFactory
-from django.core.exceptions import PermissionDenied
-try:
-    from django.core.urlresolvers import reverse
-except ImportError:
-    from django.urls import reverse
 from django.contrib.admin.sites import AdminSite
+from django.contrib.auth.models import AnonymousUser, User
 from django.contrib.messages.storage.fallback import FallbackStorage
-from django.contrib.auth.models import User, AnonymousUser
+from django.core.exceptions import PermissionDenied
+from django.test import RequestFactory, TestCase
+from django.urls import reverse
 
 from hitcount.admin import HitAdmin, HitCountAdmin
-from hitcount.models import Hit, BlacklistIP, BlacklistUserAgent
+from hitcount.models import BlacklistIP, BlacklistUserAgent, Hit
 from hitcount.utils import get_hitcount_model
 
 from blog.models import Post
@@ -41,10 +35,10 @@ class HitAdminTest(TestCase):
         self.request = self.factory.get(reverse('admin:hitcount_hit_changelist'))
 
         # https://code.djangoproject.com/ticket/17971
-        setattr(self.request, 'session', 'session')
+        self.request.session = 'session'
         messages = FallbackStorage(self.request)
-        setattr(self.request, '_messages', messages)
-        setattr(self.request, 'user', AnonymousUser())
+        self.request._messages = messages
+        self.request.user = AnonymousUser()
 
         post = Post.objects.create(title='my title', content='my text')
         hit_count = HitCount.objects.create(content_object=post)

@@ -1,0 +1,54 @@
+{% extends "blog/base.html" %}
+{% load hitcount_tags %}
+
+{% block content %}
+
+{% get_hit_count for post as total_hits %}
+
+<div class="row">
+
+  <div class="col-md-12">
+    <h1>{{post.title}}</h1>
+  </div>
+  <div class="col-md-8">
+    <p class="lead">{{ post.content }}</p>
+  </div>
+
+  <div class="col-md-4 bg-info">
+
+    <h2>Hitcount Info</h2>
+
+    <dl class="dl-horizontal">
+      <dt>Total Hits:</dt>
+      <dd>{{ total_hits }}</dd>
+      <dt>Hit counted?</dt>
+      <dd id="hit-counted"></dd>
+      <dt>Hit response:</dt>
+      <dd id="hit-response"></dd>
+    </dl>
+
+  </div>
+</div>
+{%endblock%}
+
+{% comment %}
+{% insert_hit_count_js %} needs no JavaScript library: it POSTs the hit with
+fetch() and then dispatches a "hitcount:counted" (or "hitcount:error") event on
+document, with the JSON response in event.detail.
+
+Use "{% insert_hit_count_js for post debug %}" to log the response to the
+browser console.
+{% endcomment %}
+
+{% block inline_javascript %}
+<script>
+document.addEventListener("hitcount:counted", function (event) {
+  var value = document.createElement("i");
+  value.id = "hit-counted-value";
+  value.textContent = event.detail.hit_counted;
+  document.getElementById("hit-counted").appendChild(value);
+  document.getElementById("hit-response").textContent = event.detail.hit_message;
+});
+</script>
+{% insert_hit_count_js for post %}
+{% endblock %}

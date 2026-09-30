@@ -1,13 +1,15 @@
-import warnings
 from collections import namedtuple
 
-from django.http import Http404, JsonResponse, HttpResponseBadRequest
 from django.conf import settings
-from django.views.generic import View, DetailView
+from django.core.exceptions import ValidationError
+from django.http import Http404, HttpResponseBadRequest, JsonResponse
+from django.views.generic import DetailView, View
 
-from hitcount.utils import get_ip
-from hitcount.models import Hit, BlacklistIP, BlacklistUserAgent
-from hitcount.utils import RemovedInHitCount13Warning, get_hitcount_model
+from hitcount.models import BlacklistIP, BlacklistUserAgent, Hit
+from hitcount.utils import get_hitcount_model, get_ip
+
+UpdateHitCountResponse = namedtuple(
+    'UpdateHitCountResponse', 'hit_counted hit_message')
 
 
 class HitCountMixin:
@@ -17,7 +19,7 @@ class HitCountMixin:
     """
 
     @classmethod
-    def hit_count(self, request, hitcount):
+    def hit_count(cls, request, hitcount):
         """
         Called with a HttpRequest and HitCount object it will return a
         namedtuple:
@@ -28,19 +30,13 @@ class HitCountMixin:
         not.  `'hit_message` will indicate by what means the Hit was either
         counted or ignored.
         """
-        UpdateHitCountResponse = namedtuple(
-            'UpdateHitCountResponse', 'hit_counted hit_message')
-
         # as of Django 1.8.4 empty sessions are not being saved
         # https://code.djangoproject.com/ticket/25489
         if request.session.session_key is None:
             request.session.save()
 
         user = request.user
-        try:
-            is_authenticated_user = user.is_authenticated()
-        except:
-            is_authenticated_user = user.is_authenticated
+        is_authenticated_user = user.is_authenticated
         session_key = request.session.session_key
         ip = get_ip(request)
         user_agent = request.headers.get('User-Agent', '')[:255]
@@ -48,18 +44,18 @@ class HitCountMixin:
         exclude_user_group = getattr(settings, 'HITCOUNT_EXCLUDE_USER_GROUP', None)
 
         # first, check our request against the IP blacklist
-        if BlacklistIP.objects.filter(ip__exact=ip):
+        if BlacklistIP.objects.filter(ip__exact=ip).exists():
             return UpdateHitCountResponse(
                 False, 'Not counted: user IP has been blacklisted')
 
         # second, check our request against the user agent blacklist
-        if BlacklistUserAgent.objects.filter(user_agent__exact=user_agent):
+        if BlacklistUserAgent.objects.filter(user_agent__exact=user_agent).exists():
             return UpdateHitCountResponse(
                 False, 'Not counted: user agent has been blacklisted')
 
         # third, see if we are excluding a specific user group or not
         if exclude_user_group and is_authenticated_user:
-            if user.groups.filter(name__in=exclude_user_group):
+            if user.groups.filter(name__in=exclude_user_group).exists():
                 return UpdateHitCountResponse(
                     False, 'Not counted: user excluded by group')
 
@@ -76,12 +72,11 @@ class HitCountMixin:
                     False, 'Not counted: hits per IP address limit reached')
 
         # create a generic Hit object with request data
-        hit = Hit(session=session_key, hitcount=hitcount, ip=get_ip(request),
-                  user_agent=request.headers.get('User-Agent', '')[:255],)
+        hit = Hit(session=session_key, hitcount=hitcount, ip=ip, user_agent=user_agent)
 
         # first, use a user's authentication to see if they made an earlier hit
         if is_authenticated_user:
-            if not qs.filter(user=user, hitcount=hitcount):
+            if not qs.filter(user=user, hitcount=hitcount).exists():
                 hit.user = user  # associate this hit with a user
                 hit.save()
 
@@ -93,7 +88,7 @@ class HitCountMixin:
 
         # if not authenticated, see if we have a repeat session
         else:
-            if not qs.filter(session=session_key, hitcount=hitcount):
+            if not qs.filter(session=session_key, hitcount=hitcount).exists():
                 hit.save()
                 response = UpdateHitCountResponse(
                     True, 'Hit counted: session key')
@@ -104,7 +99,7 @@ class HitCountMixin:
         return response
 
 
-class HitCountJSONView(View, HitCountMixin):
+class HitCountJSONView(HitCountMixin, View):
     """
     JSON response view to handle HitCount POST.
     """
@@ -121,16 +116,17 @@ class HitCountJSONView(View, HitCountMixin):
     def post(self, request, *args, **kwargs):
         hitcount_pk = request.POST.get('hitcountPK')
 
+        HitCount = get_hitcount_model()
         try:
-            hitcount = get_hitcount_model().objects.get(pk=hitcount_pk)
-        except:
+            hitcount = HitCount.objects.get(pk=hitcount_pk)
+        except (HitCount.DoesNotExist, ValueError, TypeError, ValidationError):
             return HttpResponseBadRequest("HitCount object_pk not working")
 
         hit_count_response = self.hit_count(request, hitcount)
         return JsonResponse(hit_count_response._asdict())
 
 
-class HitCountDetailView(DetailView, HitCountMixin):
+class HitCountDetailView(HitCountMixin, DetailView):
     """
     HitCountDetailView provides an inherited DetailView that will inject the
     template context with a `hitcount` variable giving you the number of
@@ -161,27 +157,3 @@ class HitCountDetailView(DetailView, HitCountMixin):
 
         return context
 
-
-def _update_hit_count(request, hitcount):
-    """
-    Deprecated in 1.2. Use hitcount.views.Hit CountMixin.hit_count() instead.
-    """
-    warnings.warn(
-        "hitcount.views._update_hit_count is deprecated. "
-        "Use hitcount.views.HitCountMixin.hit_count() instead.",
-        RemovedInHitCount13Warning
-    )
-    return HitCountMixin.hit_count(request, hitcount)
-
-
-def update_hit_count_ajax(request, *args, **kwargs):
-    """
-    Deprecated in 1.2. Use hitcount.views.HitCountJSONView instead.
-    """
-    warnings.warn(
-        "hitcount.views.update_hit_count_ajax is deprecated. "
-        "Use hitcount.views.HitCountJSONView instead.",
-        RemovedInHitCount13Warning
-    )
-    view = HitCountJSONView.as_view()
-    return view(request, *args, **kwargs)

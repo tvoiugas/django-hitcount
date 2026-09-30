@@ -1,0 +1,4 @@
+* text=auto eol=lf
+*.mo binary
+*.min.js -diff
+*.min.css -diff

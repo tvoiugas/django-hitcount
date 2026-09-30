@@ -1,0 +1,93 @@
+[build-system]
+requires = ["hatchling>=1.26"]
+build-backend = "hatchling.build"
+
+[project]
+name = "django-hitcount"
+dynamic = ["version"]
+description = "Hit counting application for Django."
+readme = "README.rst"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "Damon Timm", email = "damontimm@gmail.com" }]
+requires-python = ">=3.10"
+dependencies = ["Django>=5.2"]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Environment :: Web Environment",
+    "Framework :: Django",
+    "Framework :: Django :: 5.2",
+    "Framework :: Django :: 6.0",
+    "Framework :: Django :: 6.1",
+    "Intended Audience :: Developers",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Internet :: WWW/HTTP :: Dynamic Content",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
+
+[project.urls]
+Homepage = "https://github.com/thornomad/django-hitcount"
+Documentation = "https://django-hitcount.readthedocs.io"
+Changelog = "https://django-hitcount.readthedocs.io/en/latest/changelog.html"
+Issues = "https://github.com/thornomad/django-hitcount/issues"
+
+[dependency-groups]
+test = [
+    "pytest>=8",
+    "pytest-django>=4.9",
+    "coverage[toml]>=7",
+]
+selenium = ["selenium>=4.10"]
+lint = ["ruff>=0.6"]
+docs = ["sphinx>=7", "sphinx-rtd-theme>=2"]
+dev = [
+    { include-group = "test" },
+    { include-group = "lint" },
+    "tox>=4.22",
+]
+
+[tool.hatch.version]
+path = "hitcount/__init__.py"
+
+[tool.hatch.build.targets.sdist]
+include = ["/hitcount", "/tests", "/example_project", "/docs", "/README.rst", "/LICENSE", "/tox.ini"]
+exclude = ["docs/_build", "example_project/db.sqlite3"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["hitcount"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "--strict-markers"
+markers = ["selenium: browser tests; run with HITCOUNT_SELENIUM=1"]
+filterwarnings = ["error::DeprecationWarning", "error::PendingDeprecationWarning"]
+
+[tool.coverage.run]
+source = ["hitcount"]
+branch = true
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = true
+
+[tool.ruff]
+line-length = 119
+target-version = "py310"
+extend-exclude = ["docs/conf.py", "*/migrations/*"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "DJ", "PIE", "SIM"]
+# keep the existing %-formatting / nested-if style of the codebase
+ignore = ["UP031", "E731", "SIM102", "SIM108"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["hitcount"]
+known-local-folder = ["blog", "tests"]

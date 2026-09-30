@@ -1,11 +1,7 @@
-# -*- coding: utf-8 -*-
-#
 # Automatically load our fixtures for the blog.
 # As described at:
 #
 # http://stackoverflow.com/a/25981899/181902
-
-from __future__ import unicode_literals
 
 import os
 

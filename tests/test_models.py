@@ -1,17 +1,10 @@
-# -*- coding: utf-8 -*-
-from __future__ import unicode_literals
-
 from datetime import timedelta
-
-try:
-    import unittest.mock as mock
-except ImportError:
-    import mock
+from unittest import mock
 
 from django.test import TestCase
 from django.utils import timezone
 
-from hitcount.models import Hit, BlacklistIP, BlacklistUserAgent
+from hitcount.models import BlacklistIP, BlacklistUserAgent, Hit
 from hitcount.utils import get_hitcount_model
 
 from blog.models import Post
@@ -227,7 +220,7 @@ class HitCountTests(TestCase):
         """
         hit_count = HitCount.objects.create(content_object=self.post)
 
-        for x in range(10):
+        for _ in range(10):
             Hit.objects.create(hitcount=hit_count)
 
         self.assertEqual(len(Hit.objects.all()), 10)

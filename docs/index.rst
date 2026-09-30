@@ -1,12 +1,10 @@
 django-hitcount
 ================
 
-.. image:: https://travis-ci.org/thornomad/django-hitcount.svg?branch=master
-    :target: https://travis-ci.org/thornomad/django-hitcount
-.. image:: https://coveralls.io/repos/thornomad/django-hitcount/badge.svg?branch=master
-    :target: https://coveralls.io/r/thornomad/django-hitcount?branch=master
-.. image:: https://badge.fury.io/py/django-hitcount.svg
-    :target: http://badge.fury.io/py/django-hitcount
+.. image:: https://github.com/thornomad/django-hitcount/actions/workflows/ci.yml/badge.svg
+    :target: https://github.com/thornomad/django-hitcount/actions/workflows/ci.yml
+.. image:: https://img.shields.io/pypi/v/django-hitcount.svg
+    :target: https://pypi.org/project/django-hitcount/
 
 Django-Hitcount allows you to track the number of hits/views for a particular object.
 

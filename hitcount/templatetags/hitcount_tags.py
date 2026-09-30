@@ -1,14 +1,12 @@
 from collections import namedtuple
 
 from django import template
+from django.conf import settings
 from django.contrib.contenttypes.models import ContentType
-try:
-    from django.core.urlresolvers import reverse
-except ImportError:
-    from django.urls import reverse
+from django.urls import reverse
+from django.utils.html import escapejs
 
 from hitcount.utils import get_hitcount_model
-
 
 register = template.Library()
 
@@ -27,13 +25,13 @@ def get_hit_count_from_obj_variable(context, obj_variable, tag_name):
 
     try:
         obj = obj_variable.resolve(context)
-    except template.VariableDoesNotExist:
-        raise error_to_raise
+    except template.VariableDoesNotExist as e:
+        raise error_to_raise from e
 
     try:
         ctype = ContentType.objects.get_for_model(obj)
-    except AttributeError:
-        raise error_to_raise
+    except AttributeError as e:
+        raise error_to_raise from e
 
     hit_count, created = get_hitcount_model().objects.get_or_create(
         content_type=ctype, object_pk=obj.pk)
@@ -63,6 +61,7 @@ def return_period_from_string(arg):
 
 class GetHitCount(template.Node):
 
+    @classmethod
     def handle_token(cls, parser, token):
         args = token.contents.split()
 
@@ -93,8 +92,6 @@ class GetHitCount(template.Node):
                 "'for [object] in [period] as [var]' (got %r)" % args
             )
 
-    handle_token = classmethod(handle_token)
-
     def __init__(self, obj_as_str, as_varname=None, period=None):
         self.obj_variable = template.Variable(obj_as_str)
         self.as_varname = as_varname
@@ -106,13 +103,13 @@ class GetHitCount(template.Node):
         if self.period:  # if user sets a time period, use it
             try:
                 hits = hit_count.hits_in_last(**self.period)
-            except TypeError:
+            except TypeError as e:
                 raise template.TemplateSyntaxError(
                     "'get_hit_count for [obj] within [timedelta]' requires "
                     "a valid comma separated list of timedelta arguments. "
                     "For example, ['days=5,hours=6']. "
                     "Got these instead: %s" % self.period
-                )
+                ) from e
         else:
             hits = hit_count.hits
 
@@ -151,6 +148,7 @@ register.tag('get_hit_count', get_hit_count)
 
 class WriteHitCountJavascriptVariables(template.Node):
 
+    @classmethod
     def handle_token(cls, parser, token):
         args = token.contents.split()
 
@@ -163,8 +161,6 @@ class WriteHitCountJavascriptVariables(template.Node):
                 '"insert_hit_count_js_variables for [object]"\n'
                 'Got: %s' % ' '.join(str(i) for i in args)
             )
-
-    handle_token = classmethod(handle_token)
 
     def __init__(self, obj_variable):
         self.obj_variable = template.Variable(obj_variable)
@@ -185,7 +181,7 @@ def insert_hit_count_js_variables(parser, token):
     """
     Injects JavaScript global variables into your template.  These variables
     can be used in your JavaScript files to send the correctly mapped HitCount
-    ID to the server (see: hitcount-jquery.js for an example).
+    ID to the server (see: {% insert_hit_count_js %} for an example).
 
     {% insert_hit_count_js_variables for [object] %}
     """
@@ -196,6 +192,7 @@ register.tag('insert_hit_count_js_variables', insert_hit_count_js_variables)
 
 class GetHitCountJavascriptVariables(template.Node):
 
+    @classmethod
     def handle_token(cls, parser, token):
         args = token.contents.split()
 
@@ -208,8 +205,6 @@ class GetHitCountJavascriptVariables(template.Node):
                 '"get_hit_count_js_variables for [object] as [var_name]."\n'
                 'Got: %s' % ' '.join(str(i) for i in args)
             )
-
-    handle_token = classmethod(handle_token)
 
     def __init__(self, obj_variable, as_varname):
         self.obj_variable = template.Variable(obj_variable)
@@ -230,7 +225,7 @@ def get_hit_count_js_variables(parser, token):
     """
     Injects JavaScript global variables into your template.  These variables
     can be used in your JavaScript files to send the correctly mapped HitCount
-    ID to the server (see: hitcount-jquery.js for an example).
+    ID to the server (see: {% insert_hit_count_js %} for an example).
 
     {% get_hit_count_js_variables for [object] as [var_name] %}
 
@@ -246,35 +241,43 @@ register.tag('get_hit_count_js_variables', get_hit_count_js_variables)
 class WriteHitCountJavascript(template.Node):
 
     JS_TEMPLATE = """
-<script type="text/javascript">
-//<![CDATA[
-jQuery(document).ready(function($) {
-    $.postCSRF("%s", {
-      hitcountPK: "%s"
-    });
-});
-//]]>
+<script>
+(function () {
+  var csrfToken = "%(csrf_token)s";
+  if (!csrfToken) {
+    var match = document.cookie.match(/(?:^|;\\s*)%(csrf_cookie_name)s=([^;]*)/);
+    csrfToken = match ? decodeURIComponent(match[1]) : "";
+  }
+  fetch("%(url)s", {
+    method: "POST",
+    credentials: "same-origin",
+    headers: {
+      "Content-Type": "application/x-www-form-urlencoded",
+      "X-CSRFToken": csrfToken,
+      "X-Requested-With": "XMLHttpRequest"
+    },
+    body: "hitcountPK=" + encodeURIComponent("%(pk)s")
+  }).then(function (response) {
+    if (!response.ok) {
+      throw new Error("HTTP " + response.status);
+    }
+    return response.json();
+  }).then(function (data) {%(on_success)s
+    document.dispatchEvent(new CustomEvent("hitcount:counted", {detail: data}));
+  }).catch(function (error) {%(on_error)s
+    document.dispatchEvent(new CustomEvent("hitcount:error", {detail: error}));
+  });
+})();
 </script>
 """
 
-    JS_TEMPLATE_DEBUG = """
-<script type="text/javascript">
-//<![CDATA[
-jQuery(document).ready(function($) {
-    $.postCSRF("%s", {
-      hitcountPK: "%s"
-    }).done(function(data) {
-      console.log('django-hitcount: AJAX POST succeeded.');
-      console.log(data);
-    }).fail(function(data) {
-      console.log('django-hitcount: AJAX POST failed.');
-      console.log(data);
-    });
-});
-//]]>
-</script>
-"""
+    JS_DEBUG_SUCCESS = """
+    console.log("django-hitcount: AJAX POST succeeded.", data);"""
 
+    JS_DEBUG_ERROR = """
+    console.log("django-hitcount: AJAX POST failed.", error);"""
+
+    @classmethod
     def handle_token(cls, parser, token):
         args = token.contents.split()
 
@@ -286,11 +289,9 @@ jQuery(document).ready(function($) {
             raise template.TemplateSyntaxError(
                 'insert_hit_count_js requires this syntax: '
                 '"insert_hit_count_js for [object]"\n'
-                '"insert_hit_count_js for [object] debug"'
+                '"insert_hit_count_js for [object] debug"\n'
                 'Got: %s' % ' '.join(str(i) for i in args)
             )
-
-    handle_token = classmethod(handle_token)
 
     def __init__(self, obj_variable, debug):
         self.obj_variable = template.Variable(obj_variable)
@@ -302,15 +303,31 @@ jQuery(document).ready(function($) {
             self.obj_variable,
             'insert_hit_count_js'
         )
-        template = self.JS_TEMPLATE_DEBUG if self.debug else self.JS_TEMPLATE
-        return template % (str(reverse('hitcount:hit_ajax')), str(hit_count.pk))
+        csrf_token = str(context.get('csrf_token', ''))
+        if csrf_token == 'NOTPROVIDED':
+            csrf_token = ''
+        return self.JS_TEMPLATE % {
+            'csrf_token': escapejs(csrf_token),
+            'csrf_cookie_name': escapejs(settings.CSRF_COOKIE_NAME),
+            'url': escapejs(reverse('hitcount:hit_ajax')),
+            'pk': escapejs(hit_count.pk),
+            'on_success': self.JS_DEBUG_SUCCESS if self.debug else '',
+            'on_error': self.JS_DEBUG_ERROR if self.debug else '',
+        }
 
 
 def insert_hit_count_js(parser, token):
     """
-    Injects the JavaScript into your template that works with jquery.postcsrf.js.
+    Injects a dependency-free <script> that POSTs the hit to HitCountJSONView
+    using fetch(). The CSRF token is taken from the template context (or the
+    CSRF cookie as a fallback), so no extra JavaScript library is required.
 
-    {% insert_hit_count_js_variables for [object] %}
+    Once the request completes a ``hitcount:counted`` event (or
+    ``hitcount:error`` on failure) is dispatched on ``document`` with the JSON
+    response in ``event.detail``.
+
+    {% insert_hit_count_js for [object] %}
+    {% insert_hit_count_js for [object] debug %}
     """
     return WriteHitCountJavascript.handle_token(parser, token)
 
