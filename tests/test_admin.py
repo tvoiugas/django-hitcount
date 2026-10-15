@@ -41,7 +41,7 @@ class HitAdminTest(TestCase):
         self.request.user = AnonymousUser()
 
         post = Post.objects.create(title='my title', content='my text')
-        hit_count = HitCount.objects.create(content_object=post)
+        self.hit_count = hit_count = HitCount.objects.create(content_object=post)
 
         for x in range(10):
             Hit.objects.create(hitcount=hit_count, ip="127.0.0.%s" % x, user_agent="agent_%s" % x)
@@ -76,7 +76,7 @@ class HitAdminTest(TestCase):
         # add by hit object, should
         qs = Hit.objects.filter(ip="127.0.0.5")
         self.admin.blacklist_ips(self.request, qs)
-        ip = BlacklistIP.objects.get(pk=1)
+        ip = BlacklistIP.objects.get()
         self.assertEqual(ip.ip, "127.0.0.5")
         self.assertEqual(len(BlacklistIP.objects.all()), 1)
 
@@ -110,7 +110,7 @@ class HitAdminTest(TestCase):
         """
         qs = Hit.objects.filter(ip="127.0.0.5")
         self.admin.blacklist_user_agents(self.request, qs)
-        ua = BlacklistUserAgent.objects.get(pk=1)
+        ua = BlacklistUserAgent.objects.get()
         self.assertEqual(ua.user_agent, 'agent_5')
         self.assertEqual(len(BlacklistUserAgent.objects.all()), 1)
 
@@ -147,7 +147,7 @@ class HitAdminTest(TestCase):
 
         qs = Hit.objects.all()[:5]
         self.admin.delete_queryset(self.request, qs)
-        hit_count = HitCount.objects.get(pk=1)
+        hit_count = HitCount.objects.get(pk=self.hit_count.pk)
 
         self.assertEqual(len(Hit.objects.all()), 5)
         self.assertEqual(hit_count.hits, 5)
@@ -161,7 +161,7 @@ class HitAdminTest(TestCase):
 
         qs = Hit.objects.filter(ip="127.0.0.5")
         self.admin.delete_queryset(self.request, qs)
-        hit_count = HitCount.objects.get(pk=1)
+        hit_count = HitCount.objects.get(pk=self.hit_count.pk)
 
         self.assertEqual(len(Hit.objects.all()), 9)
         self.assertEqual(hit_count.hits, 9)
@@ -186,7 +186,7 @@ class HitAdminTest(TestCase):
 
         qs = Hit.objects.all()[:5]
         self.admin.blacklist_delete_ips(self.request, qs)
-        hit_count = HitCount.objects.get(pk=1)
+        hit_count = HitCount.objects.get(pk=self.hit_count.pk)
 
         self.assertEqual(len(Hit.objects.all()), 5)
         self.assertEqual(hit_count.hits, 5)
@@ -201,7 +201,7 @@ class HitAdminTest(TestCase):
 
         qs = Hit.objects.all()[:5]
         self.admin.blacklist_delete_user_agents(self.request, qs)
-        hit_count = HitCount.objects.get(pk=1)
+        hit_count = HitCount.objects.get(pk=self.hit_count.pk)
 
         self.assertEqual(len(Hit.objects.all()), 5)
         self.assertEqual(hit_count.hits, 5)

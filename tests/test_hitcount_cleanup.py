@@ -21,7 +21,7 @@ class HitCountCleanUp(TestCase):
     def setUp(self):
 
         post = Post.objects.create(title='hi', content='some text')
-        hit_count = HitCount.objects.create(content_object=post)
+        self.hit_count = hit_count = HitCount.objects.create(content_object=post)
 
         for x in range(10):
             created = timezone.now() - timedelta(days=x * 5)
@@ -37,7 +37,7 @@ class HitCountCleanUp(TestCase):
 
     def test_preserve_hitcount(self):
         """Removing Hits should not decrease the total HitCount."""
-        hit_count = HitCount.objects.get(pk=1)
+        hit_count = HitCount.objects.get(pk=self.hit_count.pk)
         call_command(COMMAND_NAME)
         self.assertEqual(hit_count.hits, 10)
 

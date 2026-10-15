@@ -19,6 +19,12 @@ Development dependencies are declared as `dependency groups`_ in ``pyproject.tom
     $ tox               # against the entire array of Django/Python versions
     $ tox -e py-dj52    # a single Django version, using the current Python
 
+To run the suite against PostgreSQL instead of SQLite (``pip install "psycopg[binary]"``)::
+
+    $ docker run -d --rm -p 5432:5432 -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=hitcount postgres:17
+    $ HITCOUNT_TEST_DB=postgres POSTGRES_PASSWORD=postgres pytest
+    $ POSTGRES_PASSWORD=postgres tox -e py-dj61-pg   # or through tox
+
 The browser (Selenium) tests are opt-in::
 
     $ pip install --group selenium

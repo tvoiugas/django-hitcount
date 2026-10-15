@@ -40,7 +40,7 @@ class HitTests(TestCase):
 
     def setUp(self):
         post = Post.objects.create(title='my title', content='my text')
-        hit_count = HitCount.objects.create(content_object=post)
+        self.hit_count = hit_count = HitCount.objects.create(content_object=post)
         self.hit = Hit.objects.create(hitcount=hit_count)
 
     def test_string_representation(self):
@@ -48,17 +48,17 @@ class HitTests(TestCase):
         Basic __str__ testing
 
         """
-        self.assertEqual(self.hit.__str__(), 'Hit: 1')
+        self.assertEqual(self.hit.__str__(), 'Hit: %s' % self.hit.pk)
 
     def test_hit_count_increase(self):
         """
         Testing if Hit creation triggers increase of associated HitCount
 
         """
-        hit_count = HitCount.objects.get(pk=1)
+        hit_count = HitCount.objects.get(pk=self.hit_count.pk)
         self.assertEqual(hit_count.hits, 1)
         Hit.objects.create(hitcount=hit_count)
-        hit_count = HitCount.objects.get(pk=1)
+        hit_count = HitCount.objects.get(pk=self.hit_count.pk)
         self.assertEqual(hit_count.hits, 2)
 
     def test_hit_delete(self):
@@ -67,7 +67,7 @@ class HitTests(TestCase):
 
         """
         self.hit.delete()
-        hit_count = HitCount.objects.get(pk=1)
+        hit_count = HitCount.objects.get(pk=self.hit_count.pk)
         self.assertEqual(hit_count.hits, 0)
 
     def test_hit_delete_save_hitcount(self):
@@ -77,7 +77,7 @@ class HitTests(TestCase):
 
         """
         self.hit.delete(save_hitcount=True)
-        hit_count = HitCount.objects.get(pk=1)
+        hit_count = HitCount.objects.get(pk=self.hit_count.pk)
         self.assertEqual(hit_count.hits, 1)
 
     def test_filter_active(self):
@@ -85,7 +85,7 @@ class HitTests(TestCase):
         Test for "active" Hits.  Out of ten, should have seven remaining.
 
         """
-        hit_count = HitCount.objects.get(pk=1)
+        hit_count = HitCount.objects.get(pk=self.hit_count.pk)
 
         # add 9 more Hits
         for x in range(9):
@@ -121,7 +121,7 @@ class HitCountTests(TestCase):
         hit_count = HitCount.objects.create(content_object=self.post)
         hit_count.increase()
 
-        hit_count = HitCount.objects.get(pk=1)
+        hit_count = HitCount.objects.get(pk=hit_count.pk)
         self.assertEqual(hit_count.hits, 1)
 
     def test_decrease(self):
@@ -132,7 +132,7 @@ class HitCountTests(TestCase):
         hit_count = HitCount.objects.create(hits=1, content_object=self.post)
         hit_count.decrease()
 
-        hit_count = HitCount.objects.get(pk=1)
+        hit_count = HitCount.objects.get(pk=hit_count.pk)
         self.assertEqual(hit_count.hits, 0)
 
     def test_hits_in_last_assert_error_when_no_args(self):
@@ -159,7 +159,7 @@ class HitCountTests(TestCase):
 
                 Hit.objects.create(hitcount=hit_count)
 
-        hit_count = HitCount.objects.get(pk=1)
+        hit_count = HitCount.objects.get(pk=hit_count.pk)
 
         self.assertEqual(hit_count.hits_in_last(days=30), 6)
 

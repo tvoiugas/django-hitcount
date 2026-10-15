@@ -10,14 +10,26 @@ released.
 
 **Compatibility**
 
+ * Models with UUID or string primary keys are now supported:
+   ``HitCount.object_pk`` is a ``CharField(max_length=255)`` (migration ``0007``).
+   On PostgreSQL (and other databases with a native UUID type) you can also
+   filter and order UUID-keyed models by hits through a ``GenericRelation``;
+   on SQLite and MySQL that particular join can't match UUIDs, due to how
+   Django stores them there (everything else works)
  * Supports Django 5.2 (LTS), 6.0 and 6.1 on Python 3.10 - 3.14 (Django 6.x needs Python 3.12+)
  * Dropped support for Django < 5.2 and Python < 3.10
  * Removed the ``django-etc`` dependency; Django is now the only requirement
 
 **Upgrade notes**
 
- * Run ``python manage.py migrate``.  Migration ``0005`` converts every hitcount
-   primary key to a ``BigAutoField`` (``bigint``); on a large ``Hit`` table this
+ * Run ``python manage.py migrate``.  Migration ``0007`` turns
+   ``HitCount.object_pk`` from an integer into a string column; existing rows
+   keep working.  If you use a custom model (``HITCOUNT_HITCOUNT_MODEL``)
+   based on ``HitCountBase``, run ``makemigrations`` for your app too
+ * ``{% get_hit_count %}`` no longer creates a ``HitCount`` row for objects that
+   were never viewed (a database write on every page display); it shows ``0``.
+   The JavaScript tags still create one, since the page must POST its id
+ * Migration ``0005`` converts every hitcount primary key to a ``BigAutoField`` (``bigint``); on a large ``Hit`` table this
    rewrites the table, so plan for it (or run ``hitcount_cleanup`` first)
  * Removed ``hitcount.views._update_hit_count()`` (use ``HitCountMixin.hit_count()``),
    ``hitcount.views.update_hit_count_ajax()`` (use ``HitCountJSONView``) and

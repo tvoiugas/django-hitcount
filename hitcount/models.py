@@ -44,7 +44,8 @@ class HitCountBase(models.Model):
     modified = models.DateTimeField(auto_now=True)
     content_type = models.ForeignKey(
         ContentType, related_name="content_type_set_for_%(class)s", on_delete=models.CASCADE)
-    object_pk = models.PositiveIntegerField(verbose_name='object ID')
+    # a string so it can hold any primary key type (integer, UUID, slug, ...)
+    object_pk = models.CharField(max_length=255, verbose_name='object ID')
     content_object = GenericForeignKey('content_type', 'object_pk')
 
     objects = HitCountManager()
@@ -86,6 +87,8 @@ class HitCountBase(models.Model):
         assert kwargs, "Must provide at least one timedelta arg (eg, days=1)"
 
         period = timezone.now() - timedelta(**kwargs)
+        if self.pk is None:  # not saved yet, so it can't have any hits
+            return 0
         return self.hit_set.filter(created__gte=period).count()
 
 

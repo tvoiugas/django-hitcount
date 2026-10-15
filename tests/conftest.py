@@ -1,3 +1,4 @@
+import os
 import sys
 from pathlib import Path
 
@@ -6,13 +7,26 @@ EXAMPLE_PROJECT = Path(__file__).resolve().parent.parent / 'example_project'
 sys.path.insert(0, str(EXAMPLE_PROJECT))
 
 
+def test_database():
+    """SQLite by default; HITCOUNT_TEST_DB=postgres uses PostgreSQL (see docs/contribute.rst)."""
+    if os.environ.get('HITCOUNT_TEST_DB') == 'postgres':
+        return {
+            'ENGINE': 'django.db.backends.postgresql',
+            'NAME': os.environ.get('POSTGRES_DB', 'hitcount'),
+            'USER': os.environ.get('POSTGRES_USER', 'postgres'),
+            'PASSWORD': os.environ.get('POSTGRES_PASSWORD', ''),
+            'HOST': os.environ.get('POSTGRES_HOST', '127.0.0.1'),
+            'PORT': os.environ.get('POSTGRES_PORT', '5432'),
+        }
+    return {'ENGINE': 'django.db.backends.sqlite3', 'NAME': ':memory:'}
+
+
 def pytest_configure():
     from django.conf import settings
 
     settings.configure(
         DEBUG_PROPAGATE_EXCEPTIONS=True,
-        DATABASES={'default': {'ENGINE': 'django.db.backends.sqlite3',
-                               'NAME': ':memory:'}},
+        DATABASES={'default': test_database()},
         SITE_ID=1,
         SECRET_KEY='HitCounts Rock!',
         DEBUG=True,

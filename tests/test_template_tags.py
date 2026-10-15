@@ -34,22 +34,31 @@ class TemplateTagGetHitCountTests(TestCase):
         {% get_hit_count for post%}
 
         If no HitCount object exists, the template tag should return zero
-        and have created an object for the next time.
+        without writing anything to the database.
         """
-        # no HitCounts to start
         self.assertEqual(len(HitCount.objects.all()), 1)
         post2 = Post.objects.create(title='second', content='post!')
 
-        out = Template(
-            "{% load hitcount_tags %}"
-            "{% get_hit_count for post %}"
-        ).render(Context({
-            "post": post2
-        }))
+        with self.assertNumQueries(2):  # content type + HitCount lookup, no INSERT
+            out = Template(
+                "{% load hitcount_tags %}"
+                "{% get_hit_count for post %}"
+                '{% get_hit_count for post within "days=1" as recent %}{{ recent }}'
+            ).render(Context({
+                "post": post2
+            }))
 
-        # zero hits, but now one object
-        self.assertEqual(str(0), out)
-        self.assertEqual(len(HitCount.objects.all()), 2)
+        self.assertEqual('00', out)
+        self.assertEqual(len(HitCount.objects.all()), 1)
+
+    def test_js_tags_still_create_hitcount(self):
+        """The JavaScript tags need a HitCount pk to POST, so they create one."""
+        post2 = Post.objects.create(title='second', content='post!')
+        Template(
+            "{% load hitcount_tags %}"
+            "{% get_hit_count_js_variables for post as hitcount %}"
+        ).render(Context({"post": post2}))
+        self.assertTrue(HitCount.objects.get_for_object(post2).pk)
 
     def test_returns_10(self):
         """

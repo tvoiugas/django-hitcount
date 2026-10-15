@@ -7,6 +7,7 @@ import os
 
 from django.db import migrations
 from django.core import serializers
+from django.core.management.color import no_style
 
 fixture_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '../fixtures'))
 fixture_filename = 'initial_data.json'
@@ -17,9 +18,18 @@ def load_fixture(apps, schema_editor):
 
     fixture = open(fixture_file, 'rb')
     objects = serializers.deserialize('json', fixture, ignorenonexistent=True)
+    models = set()
     for obj in objects:
         obj.save()
+        models.add(type(obj.object))
     fixture.close()
+
+    # the fixture sets explicit primary keys: move sequences past them
+    # (needed on PostgreSQL, like loaddata does)
+    connection = schema_editor.connection
+    with connection.cursor() as cursor:
+        for sql in connection.ops.sequence_reset_sql(no_style(), models):
+            cursor.execute(sql)
 
 
 def unload_fixture(apps, schema_editor):

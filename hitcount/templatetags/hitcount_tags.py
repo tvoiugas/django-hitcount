@@ -32,9 +32,12 @@ def csp_nonce_attr(context):
     return ' nonce="%s"' % escape(nonce)
 
 
-def get_hit_count_from_obj_variable(context, obj_variable, tag_name):
+def get_hit_count_from_obj_variable(context, obj_variable, tag_name, create=True):
     """
     Helper function to return a HitCount for a given template object variable.
+
+    With ``create=False`` nothing is written to the database: if the object
+    has no HitCount yet, an unsaved one (with zero hits) is returned.
 
     Raises TemplateSyntaxError if the passed object variable cannot be parsed.
     """
@@ -54,10 +57,15 @@ def get_hit_count_from_obj_variable(context, obj_variable, tag_name):
     except AttributeError as e:
         raise error_to_raise from e
 
-    hit_count, created = get_hitcount_model().objects.get_or_create(
-        content_type=ctype, object_pk=obj.pk)
+    HitCount = get_hitcount_model()
+    if create:
+        hit_count, created = HitCount.objects.get_or_create(content_type=ctype, object_pk=obj.pk)
+        return hit_count
 
-    return hit_count
+    try:
+        return HitCount.objects.get(content_type=ctype, object_pk=obj.pk)
+    except HitCount.DoesNotExist:
+        return HitCount(content_type=ctype, object_pk=obj.pk)
 
 
 def return_period_from_string(arg):
@@ -119,7 +127,9 @@ class GetHitCount(template.Node):
         self.period = period
 
     def render(self, context):
-        hit_count = get_hit_count_from_obj_variable(context, self.obj_variable, 'get_hit_count')
+        # only displays hits: don't create a HitCount row for unviewed objects
+        hit_count = get_hit_count_from_obj_variable(
+            context, self.obj_variable, 'get_hit_count', create=False)
 
         if self.period:  # if user sets a time period, use it
             try:
