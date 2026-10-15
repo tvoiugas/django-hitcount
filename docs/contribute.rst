@@ -10,12 +10,26 @@ Please make new features/improvements against the develop branch.  If you are pa
 Testing
 -------
 
-You can run the tests by installing the requirements and then executing ``runtests.py``::
+Development dependencies are declared as `dependency groups`_ in ``pyproject.toml`` (pip >= 25.1)::
 
-    $ pip install -r tests/requirements.txt
-    $ ./runtests.py     # against your currently installed version of Django
+    $ python -m venv .venv && source .venv/bin/activate
+    $ pip install -e . --group dev
+    $ pytest            # against your currently installed version of Django
+    $ ruff check .      # linting
     $ tox               # against the entire array of Django/Python versions
+    $ tox -e py-dj52    # a single Django version, using the current Python
 
-This method using ``py.test`` for test discovery and will also run `flake8` for code formatting.  If you would like to use Django's own test runner you can execute::
+To run the suite against PostgreSQL instead of SQLite (``pip install "psycopg[binary]"``)::
 
-    $ ./runtests.py --django
+    $ docker run -d --rm -p 5432:5432 -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=hitcount postgres:17
+    $ HITCOUNT_TEST_DB=postgres POSTGRES_PASSWORD=postgres pytest
+    $ POSTGRES_PASSWORD=postgres tox -e py-dj61-pg   # or through tox
+
+The browser (Selenium) tests are opt-in::
+
+    $ pip install --group selenium
+    $ HITCOUNT_SELENIUM=1 pytest -m selenium  # set HITCOUNT_SELENIUM_BROWSER=firefox|edge to switch browser
+
+If you change a model, remember to add a migration; the test-suite fails when one is missing.
+
+.. _dependency groups: https://packaging.python.org/en/latest/specifications/dependency-groups/

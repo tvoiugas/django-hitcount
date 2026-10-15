@@ -1,21 +1,18 @@
 from datetime import timedelta
 
-from django.db import models
 from django.conf import settings
-from django.db.models import F
-from django.utils import timezone
-from django.dispatch import receiver
 from django.contrib.contenttypes.fields import GenericForeignKey
 from django.contrib.contenttypes.models import ContentType
+from django.db import models
+from django.db.models import F
+from django.dispatch import receiver
+from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
-
-from etc.toolbox import get_model_class_from_string
-
-AUTH_USER_MODEL = getattr(settings, 'AUTH_USER_MODEL', 'auth.User')
 
 from .managers import HitCountManager, HitManager
 from .settings import MODEL_HITCOUNT
 from .signals import delete_hit_count
+from .utils import get_hitcount_model
 
 
 @receiver(delete_hit_count)
@@ -47,7 +44,8 @@ class HitCountBase(models.Model):
     modified = models.DateTimeField(auto_now=True)
     content_type = models.ForeignKey(
         ContentType, related_name="content_type_set_for_%(class)s", on_delete=models.CASCADE)
-    object_pk = models.PositiveIntegerField(verbose_name='object ID')
+    # a string so it can hold any primary key type (integer, UUID, slug, ...)
+    object_pk = models.CharField(max_length=255, verbose_name='object ID')
     content_object = GenericForeignKey('content_type', 'object_pk')
 
     objects = HitCountManager()
@@ -89,15 +87,9 @@ class HitCountBase(models.Model):
         assert kwargs, "Must provide at least one timedelta arg (eg, days=1)"
 
         period = timezone.now() - timedelta(**kwargs)
+        if self.pk is None:  # not saved yet, so it can't have any hits
+            return 0
         return self.hit_set.filter(created__gte=period).count()
-
-    # def get_content_object_url(self):
-    #     """
-    #     Django has this in its contrib.comments.model file -- seems worth
-    #     implementing though it may take a couple steps.
-    #
-    #     """
-    #     pass
 
 
 class HitCount(HitCountBase):
@@ -130,7 +122,7 @@ class Hit(models.Model):
     ip = models.CharField(max_length=40, editable=False, db_index=True)
     session = models.CharField(max_length=40, editable=False, db_index=True)
     user_agent = models.CharField(max_length=255, editable=False)
-    user = models.ForeignKey(AUTH_USER_MODEL, null=True, editable=False, on_delete=models.CASCADE)
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, editable=False, on_delete=models.CASCADE)
     hitcount = models.ForeignKey(MODEL_HITCOUNT, editable=False, on_delete=models.CASCADE)
 
     objects = HitManager()
@@ -207,6 +199,6 @@ class HitCountMixin:
     @property
     def hit_count(self):
         ctype = ContentType.objects.get_for_model(self.__class__)
-        hit_count, created = get_model_class_from_string(MODEL_HITCOUNT).objects.get_or_create(
+        hit_count, created = get_hitcount_model().objects.get_or_create(
             content_type=ctype, object_pk=self.pk)
         return hit_count

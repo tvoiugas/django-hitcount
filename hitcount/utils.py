@@ -1,8 +1,9 @@
-import warnings
-
 from ipaddress import ip_address as validate_ip
+
+from django.apps import apps
+from django.core.exceptions import ImproperlyConfigured
+
 from hitcount import settings
-from etc.toolbox import get_model_class_from_settings
 
 
 def get_ip(request):
@@ -20,9 +21,10 @@ def get_ip(request):
 
     # if neither header contain a value, just use local loopback
     ip_address = request.headers.get('X-Forwarded-For',
-                                  request.META.get('REMOTE_ADDR', '127.0.0.1'))
+                                     request.META.get('REMOTE_ADDR', '127.0.0.1'))
     if ip_address:
-        # make sure we have one and only one IP
+        # "client, proxy1, proxy2" -- keep only the originating client
+        ip_address = ip_address.split(',')[0].strip()
         try:
             validate_ip(ip_address)
         except ValueError:
@@ -35,11 +37,12 @@ def get_ip(request):
 
 def get_hitcount_model():
     """Returns the HitCount model, set for the project."""
-    return get_model_class_from_settings(settings, 'MODEL_HITCOUNT')
-
-
-class RemovedInHitCount13Warning(DeprecationWarning):
-    pass
-
-# enable warnings by default for our deprecated
-warnings.simplefilter("default", RemovedInHitCount13Warning)
+    try:
+        return apps.get_model(settings.MODEL_HITCOUNT, require_ready=False)
+    except ValueError as e:
+        raise ImproperlyConfigured(
+            "HITCOUNT_HITCOUNT_MODEL must be of the form 'app_label.model_name'") from e
+    except LookupError as e:
+        raise ImproperlyConfigured(
+            "HITCOUNT_HITCOUNT_MODEL refers to model '%s' that has not been installed"
+            % settings.MODEL_HITCOUNT) from e

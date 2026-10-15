@@ -1,18 +1,12 @@
-# -*- coding: utf-8 -*-
-from __future__ import unicode_literals
-
-from django.test import TestCase, RequestFactory
-from django.core.exceptions import PermissionDenied
-try:
-    from django.core.urlresolvers import reverse
-except ImportError:
-    from django.urls import reverse
 from django.contrib.admin.sites import AdminSite
+from django.contrib.auth.models import AnonymousUser, User
 from django.contrib.messages.storage.fallback import FallbackStorage
-from django.contrib.auth.models import User, AnonymousUser
+from django.core.exceptions import PermissionDenied
+from django.test import RequestFactory, TestCase
+from django.urls import reverse
 
 from hitcount.admin import HitAdmin, HitCountAdmin
-from hitcount.models import Hit, BlacklistIP, BlacklistUserAgent
+from hitcount.models import BlacklistIP, BlacklistUserAgent, Hit
 from hitcount.utils import get_hitcount_model
 
 from blog.models import Post
@@ -41,13 +35,13 @@ class HitAdminTest(TestCase):
         self.request = self.factory.get(reverse('admin:hitcount_hit_changelist'))
 
         # https://code.djangoproject.com/ticket/17971
-        setattr(self.request, 'session', 'session')
+        self.request.session = 'session'
         messages = FallbackStorage(self.request)
-        setattr(self.request, '_messages', messages)
-        setattr(self.request, 'user', AnonymousUser())
+        self.request._messages = messages
+        self.request.user = AnonymousUser()
 
         post = Post.objects.create(title='my title', content='my text')
-        hit_count = HitCount.objects.create(content_object=post)
+        self.hit_count = hit_count = HitCount.objects.create(content_object=post)
 
         for x in range(10):
             Hit.objects.create(hitcount=hit_count, ip="127.0.0.%s" % x, user_agent="agent_%s" % x)
@@ -82,7 +76,7 @@ class HitAdminTest(TestCase):
         # add by hit object, should
         qs = Hit.objects.filter(ip="127.0.0.5")
         self.admin.blacklist_ips(self.request, qs)
-        ip = BlacklistIP.objects.get(pk=1)
+        ip = BlacklistIP.objects.get()
         self.assertEqual(ip.ip, "127.0.0.5")
         self.assertEqual(len(BlacklistIP.objects.all()), 1)
 
@@ -116,7 +110,7 @@ class HitAdminTest(TestCase):
         """
         qs = Hit.objects.filter(ip="127.0.0.5")
         self.admin.blacklist_user_agents(self.request, qs)
-        ua = BlacklistUserAgent.objects.get(pk=1)
+        ua = BlacklistUserAgent.objects.get()
         self.assertEqual(ua.user_agent, 'agent_5')
         self.assertEqual(len(BlacklistUserAgent.objects.all()), 1)
 
@@ -153,7 +147,7 @@ class HitAdminTest(TestCase):
 
         qs = Hit.objects.all()[:5]
         self.admin.delete_queryset(self.request, qs)
-        hit_count = HitCount.objects.get(pk=1)
+        hit_count = HitCount.objects.get(pk=self.hit_count.pk)
 
         self.assertEqual(len(Hit.objects.all()), 5)
         self.assertEqual(hit_count.hits, 5)
@@ -167,7 +161,7 @@ class HitAdminTest(TestCase):
 
         qs = Hit.objects.filter(ip="127.0.0.5")
         self.admin.delete_queryset(self.request, qs)
-        hit_count = HitCount.objects.get(pk=1)
+        hit_count = HitCount.objects.get(pk=self.hit_count.pk)
 
         self.assertEqual(len(Hit.objects.all()), 9)
         self.assertEqual(hit_count.hits, 9)
@@ -192,7 +186,7 @@ class HitAdminTest(TestCase):
 
         qs = Hit.objects.all()[:5]
         self.admin.blacklist_delete_ips(self.request, qs)
-        hit_count = HitCount.objects.get(pk=1)
+        hit_count = HitCount.objects.get(pk=self.hit_count.pk)
 
         self.assertEqual(len(Hit.objects.all()), 5)
         self.assertEqual(hit_count.hits, 5)
@@ -207,8 +201,31 @@ class HitAdminTest(TestCase):
 
         qs = Hit.objects.all()[:5]
         self.admin.blacklist_delete_user_agents(self.request, qs)
-        hit_count = HitCount.objects.get(pk=1)
+        hit_count = HitCount.objects.get(pk=self.hit_count.pk)
 
         self.assertEqual(len(Hit.objects.all()), 5)
         self.assertEqual(hit_count.hits, 5)
         self.assertEqual(len(BlacklistUserAgent.objects.all()), 5)
+
+
+class AdminPagesTest(TestCase):
+    """Render the real admin pages, so Django calls our overrides itself."""
+
+    def setUp(self):
+        user = User.objects.create_superuser('admin', 'admin@example.com', 'pw-for-tests-only')
+        self.client.force_login(user)
+        post = Post.objects.create(title='my title', content='my text')
+        hit_count = HitCount.objects.create(content_object=post)
+        Hit.objects.create(hitcount=hit_count, ip='127.0.0.1', user_agent='agent')
+
+    def test_changelists_render(self):
+        for name in ('hit', 'hitcount', 'blacklistip', 'blacklistuseragent'):
+            with self.subTest(name=name):
+                response = self.client.get(reverse('admin:hitcount_%s_changelist' % name))
+                self.assertEqual(response.status_code, 200)
+
+    def test_hit_changelist_actions(self):
+        response = self.client.get(reverse('admin:hitcount_hit_changelist'))
+        actions = [value for value, _label in response.context['action_form'].fields['action'].choices]
+        self.assertNotIn('delete_selected', actions)
+        self.assertIn('blacklist_ips', actions)

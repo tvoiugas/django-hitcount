@@ -1,15 +1,10 @@
-# -*- coding: utf-8 -*-
-from __future__ import unicode_literals
-
+import unittest
 from datetime import timedelta
+from unittest import mock
 
-try:
-    import unittest.mock as mock
-except ImportError:
-    import mock
-
-from django.test import TestCase
-from django.template import Template, Context, TemplateSyntaxError
+import django
+from django.template import Context, RequestContext, Template, TemplateSyntaxError
+from django.test import RequestFactory, TestCase
 from django.utils import timezone
 
 from hitcount.models import Hit
@@ -39,22 +34,31 @@ class TemplateTagGetHitCountTests(TestCase):
         {% get_hit_count for post%}
 
         If no HitCount object exists, the template tag should return zero
-        and have created an object for the next time.
+        without writing anything to the database.
         """
-        # no HitCounts to start
         self.assertEqual(len(HitCount.objects.all()), 1)
         post2 = Post.objects.create(title='second', content='post!')
 
-        out = Template(
-            "{% load hitcount_tags %}"
-            "{% get_hit_count for post %}"
-        ).render(Context({
-            "post": post2
-        }))
+        with self.assertNumQueries(2):  # content type + HitCount lookup, no INSERT
+            out = Template(
+                "{% load hitcount_tags %}"
+                "{% get_hit_count for post %}"
+                '{% get_hit_count for post within "days=1" as recent %}{{ recent }}'
+            ).render(Context({
+                "post": post2
+            }))
 
-        # zero hits, but now one object
-        self.assertEqual(str(0), out)
-        self.assertEqual(len(HitCount.objects.all()), 2)
+        self.assertEqual('00', out)
+        self.assertEqual(len(HitCount.objects.all()), 1)
+
+    def test_js_tags_still_create_hitcount(self):
+        """The JavaScript tags need a HitCount pk to POST, so they create one."""
+        post2 = Post.objects.create(title='second', content='post!')
+        Template(
+            "{% load hitcount_tags %}"
+            "{% get_hit_count_js_variables for post as hitcount %}"
+        ).render(Context({"post": post2}))
+        self.assertTrue(HitCount.objects.get_for_object(post2).pk)
 
     def test_returns_10(self):
         """
@@ -270,3 +274,79 @@ class TemplateTagGetHitCountTests(TestCase):
             TemplateSyntaxError, render,
             "{% load hitcount_tags %}{% insert_hit_count_js_variables for post %}",
             {"post": 'bob the baker'})
+
+
+class TemplateTagInsertHitCountJSTests(TestCase):
+
+    def setUp(self):
+        self.post = Post.objects.create(title='js', content='post')
+
+    def render(self, template, context):
+        return Template('{% load hitcount_tags %}' + template).render(Context(context))
+
+    def test_insert_js(self):
+        out = self.render('{% insert_hit_count_js for post %}', {'post': self.post})
+        pk = self.post.hit_count.pk
+
+        self.assertIn('fetch("/hitcount/hit/ajax/"', out)
+        self.assertIn('encodeURIComponent("%s")' % pk, out)
+        self.assertIn('"X-Requested-With": "XMLHttpRequest"', out)
+        self.assertIn('hitcount:counted', out)
+        self.assertNotIn('jQuery', out)
+        self.assertNotIn('console.log', out)
+
+    def test_insert_js_debug(self):
+        out = self.render('{% insert_hit_count_js for post debug %}', {'post': self.post})
+        self.assertIn('console.log("django-hitcount: AJAX POST succeeded.", data);', out)
+        self.assertIn('console.log("django-hitcount: AJAX POST failed.", error);', out)
+
+    def test_insert_js_uses_context_csrf_token(self):
+        out = self.render('{% insert_hit_count_js for post %}',
+                          {'post': self.post, 'csrf_token': 'abc123'})
+        self.assertIn('var csrfToken = "abc123";', out)
+
+    def test_insert_js_ignores_missing_csrf_token(self):
+        out = self.render('{% insert_hit_count_js for post %}',
+                          {'post': self.post, 'csrf_token': 'NOTPROVIDED'})
+        self.assertIn('var csrfToken = "";', out)
+
+    def test_insert_js_escapes_csrf_token(self):
+        out = self.render('{% insert_hit_count_js for post %}',
+                          {'post': self.post, 'csrf_token': '"</script>'})
+        self.assertIn('var csrfToken = "\\u0022\\u003C/script\\u003E";', out)
+
+    def test_parsing_errors(self):
+        with self.assertRaises(TemplateSyntaxError):
+            self.render('{% insert_hit_count_js post %}', {'post': self.post})
+        with self.assertRaises(TemplateSyntaxError):
+            self.render('{% insert_hit_count_js for post verbose %}', {'post': self.post})
+        with self.assertRaises(TemplateSyntaxError):
+            self.render('{% insert_hit_count_js for post %}', {'post': 'bob the baker'})
+
+
+@unittest.skipIf(django.VERSION < (6, 0), 'Django 6.0 added built-in CSP support')
+class TemplateTagCSPNonceTests(TestCase):
+
+    def setUp(self):
+        from django.utils.csp import LazyNonce
+
+        self.post = Post.objects.create(title='csp', content='post')
+        self.request = RequestFactory().get('/')
+        self.request._csp_nonce = LazyNonce()  # what ContentSecurityPolicyMiddleware does
+
+    def render(self, template, request):
+        context = RequestContext(request, {'post': self.post})
+        return Template('{% load hitcount_tags %}' + template).render(context)
+
+    def test_insert_js_uses_nonce(self):
+        out = self.render('{% insert_hit_count_js for post %}', self.request)
+        self.assertIn('<script nonce="%s">' % self.request._csp_nonce, out)
+
+    def test_insert_js_variables_uses_nonce(self):
+        out = self.render('{% insert_hit_count_js_variables for post %}', self.request)
+        self.assertIn('<script type="text/javascript" nonce="%s">' % self.request._csp_nonce, out)
+
+    def test_no_nonce_without_csp_middleware(self):
+        out = self.render('{% insert_hit_count_js for post %}', RequestFactory().get('/'))
+        self.assertIn('<script>', out)
+        self.assertNotIn('nonce', out)

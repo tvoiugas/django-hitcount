@@ -1,6 +1,83 @@
 Changelog
 =========
 
+Version 2.0.0
+-------------
+
+The first release in several years: it brings the app up to date with current
+Django and Python, and ships the fixes that were merged after 1.3.5 but never
+released.
+
+**Compatibility**
+
+ * Models with UUID or string primary keys are now supported:
+   ``HitCount.object_pk`` is a ``CharField(max_length=255)`` (migration ``0007``).
+   On PostgreSQL (and other databases with a native UUID type) you can also
+   filter and order UUID-keyed models by hits through a ``GenericRelation``;
+   on SQLite and MySQL that particular join can't match UUIDs, due to how
+   Django stores them there (everything else works)
+ * Supports Django 5.2 (LTS), 6.0 and 6.1 on Python 3.10 - 3.14 (Django 6.x needs Python 3.12+)
+ * Dropped support for Django < 5.2 and Python < 3.10
+ * Removed the ``django-etc`` dependency; Django is now the only requirement
+
+**Upgrade notes**
+
+ * Run ``python manage.py migrate``.  Migration ``0007`` turns
+   ``HitCount.object_pk`` from an integer into a string column; existing rows
+   keep working.  If you use a custom model (``HITCOUNT_HITCOUNT_MODEL``)
+   based on ``HitCountBase``, run ``makemigrations`` for your app too
+ * ``{% get_hit_count %}`` no longer creates a ``HitCount`` row for objects that
+   were never viewed (a database write on every page display); it shows ``0``.
+   The JavaScript tags still create one, since the page must POST its id
+ * Migration ``0005`` converts every hitcount primary key to a ``BigAutoField`` (``bigint``); on a large ``Hit`` table this
+   rewrites the table, so plan for it (or run ``hitcount_cleanup`` first)
+ * Removed ``hitcount.views._update_hit_count()`` (use ``HitCountMixin.hit_count()``),
+   ``hitcount.views.update_hit_count_ajax()`` (use ``HitCountJSONView``) and
+   ``hitcount.utils.RemovedInHitCount13Warning``, all deprecated since 1.2
+ * ``static/hitcount/hitcount-jquery.js`` (the companion of
+   ``{% insert_hit_count_js_variables %}``) no longer needs jQuery; it is kept
+   under the same name so existing ``{% static %}`` references keep working.
+   ``static/hitcount/jquery.postcsrf.js`` is still shipped
+ * ``{% insert_hit_count_js %}`` no longer needs jQuery or ``jquery.postcsrf.js``:
+   it uses ``fetch()`` and takes the CSRF token from the template context, so
+   ``@ensure_csrf_cookie`` is no longer needed either.  It now dispatches
+   ``hitcount:counted`` / ``hitcount:error`` events on ``document``
+ * The package metadata now declares the MIT license (matching ``LICENSE``);
+   earlier releases wrongly declared BSD
+
+**Fixes**
+
+ * ``get_ip()`` returned the placeholder ``10.0.0.1`` whenever
+   ``X-Forwarded-For`` contained a list of proxies; it now uses the first
+   (client) address, as documented
+ * ``HitCountJSONView`` answers ``400`` for a missing or non-numeric
+   ``hitcountPK`` instead of swallowing every exception with a bare ``except``
+ * The hit-counting checks use ``.exists()`` instead of fetching rows
+ * Invalid ``HITCOUNT_HITCOUNT_MODEL`` values raise ``ImproperlyConfigured``
+ * ``{% insert_hit_count_js %}`` and ``{% insert_hit_count_js_variables %}``
+   add the request's CSP nonce to their ``<script>`` tags when Django's
+   ``ContentSecurityPolicyMiddleware`` is used (Django 6.0+); previously a
+   nonce-based policy blocked them and no hits were counted
+ * ``HitAdmin.get_actions()`` accepts Django 6.1's ``action_location``
+   argument (fixes a ``RemovedInDjango70Warning``)
+ * Allow IPv6 addresses `#123`_
+ * Django 4+ migration for ``HitCount.content_type`` `#133`_
+ * Explicit ``BigAutoField`` primary keys to silence ``models.W042`` `#131`_
+ * Chinese translation, and a translatable app verbose name `#137`_
+ * Python 3.11 test fixes `#139`_
+
+**Project**
+
+ * Packaging moved to ``pyproject.toml`` (hatchling); ``setup.py``, ``setup.cfg``,
+   ``MANIFEST.in`` and the ``requirements.txt`` files were removed
+ * CI moved from Travis CI to GitHub Actions (tox matrix, headless-browser
+   tests, build check); linting moved from flake8 to ruff
+ * The test-suite no longer depends on the name of the checkout directory,
+   gained tests for ``get_ip()``, ``insert_hit_count_js``, CSRF-enforced
+   end-to-end requests and missing migrations
+ * Example project updated to current Django (``path()`` routes, a
+   dependency-free ``insert_hit_count_js`` demo page)
+
 Version 1.3.5
 -------------
 
@@ -87,6 +164,11 @@ Version 1.1.0
 
 .. note:: if you are upgrading from version 0.2 (it's so old!) the ``HitCount.object_pk`` was changed from a ``CharField`` to a ``PositiveIntegerField``.  You will have to manually fix this in your database after upgrading.
 
+.. _#139: https://github.com/thornomad/django-hitcount/pull/139
+.. _#137: https://github.com/thornomad/django-hitcount/pull/137
+.. _#133: https://github.com/thornomad/django-hitcount/pull/133
+.. _#131: https://github.com/thornomad/django-hitcount/pull/131
+.. _#123: https://github.com/thornomad/django-hitcount/pull/123
 .. _#108: https://github.com/thornomad/django-hitcount/issues/108
 .. _#98: https://github.com/thornomad/django-hitcount/pull/98
 .. _#90: https://github.com/thornomad/django-hitcount/issues/90

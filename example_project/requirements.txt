@@ -1,3 +1,0 @@
-Django==4.2.13
-django-etc>=1.2.0
-pytz>=2023.3

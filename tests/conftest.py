@@ -1,9 +1,24 @@
-# -*- coding: utf-8 -*-
-from __future__ import unicode_literals
-
+import os
 import sys
+from pathlib import Path
 
-sys.path.insert(0, '../django-hitcount/example_project')
+# the test-suite relies on the example project's ``blog`` app
+EXAMPLE_PROJECT = Path(__file__).resolve().parent.parent / 'example_project'
+sys.path.insert(0, str(EXAMPLE_PROJECT))
+
+
+def test_database():
+    """SQLite by default; HITCOUNT_TEST_DB=postgres uses PostgreSQL (see docs/contribute.rst)."""
+    if os.environ.get('HITCOUNT_TEST_DB') == 'postgres':
+        return {
+            'ENGINE': 'django.db.backends.postgresql',
+            'NAME': os.environ.get('POSTGRES_DB', 'hitcount'),
+            'USER': os.environ.get('POSTGRES_USER', 'postgres'),
+            'PASSWORD': os.environ.get('POSTGRES_PASSWORD', ''),
+            'HOST': os.environ.get('POSTGRES_HOST', '127.0.0.1'),
+            'PORT': os.environ.get('POSTGRES_PORT', '5432'),
+        }
+    return {'ENGINE': 'django.db.backends.sqlite3', 'NAME': ':memory:'}
 
 
 def pytest_configure():
@@ -11,26 +26,19 @@ def pytest_configure():
 
     settings.configure(
         DEBUG_PROPAGATE_EXCEPTIONS=True,
-        DATABASES={'default': {'ENGINE': 'django.db.backends.sqlite3',
-                               'NAME': ':memory:'}},
+        DATABASES={'default': test_database()},
         SITE_ID=1,
         SECRET_KEY='HitCounts Rock!',
         DEBUG=True,
-        TEMPLATE_DEBUG=True,
-        ALLOWED_HOSTS=[],
+        ALLOWED_HOSTS=['testserver', 'localhost', '127.0.0.1'],
         USE_I18N=True,
-        USE_L10N=True,
+        USE_TZ=True,
         STATIC_URL='/static/',
-        # remove MIDDLEWARE_CLASSES once we get above Django 1.10
-        MIDDLEWARE_CLASSES=(
-            'django.middleware.common.CommonMiddleware',
-            'django.contrib.sessions.middleware.SessionMiddleware',
-            'django.contrib.auth.middleware.AuthenticationMiddleware',
-            'django.contrib.messages.middleware.MessageMiddleware',
-        ),
+        DEFAULT_AUTO_FIELD='django.db.models.AutoField',
         MIDDLEWARE=(
             'django.middleware.common.CommonMiddleware',
             'django.contrib.sessions.middleware.SessionMiddleware',
+            'django.middleware.csrf.CsrfViewMiddleware',
             'django.contrib.auth.middleware.AuthenticationMiddleware',
             'django.contrib.messages.middleware.MessageMiddleware',
         ),
@@ -38,6 +46,7 @@ def pytest_configure():
             'django.contrib.auth',
             'django.contrib.admin',
             'django.contrib.contenttypes',
+            'django.contrib.messages',
             'django.contrib.sessions',
             'django.contrib.sites',
             'django.contrib.staticfiles',
@@ -46,11 +55,18 @@ def pytest_configure():
             'tests',
         ),
         ROOT_URLCONF='example_project.urls',
-        SESSION_ENGINE='django.contrib.sessions.backends.file',
+        SESSION_ENGINE='django.contrib.sessions.backends.db',
         TEMPLATES=[
             {
                 'BACKEND': 'django.template.backends.django.DjangoTemplates',
                 'APP_DIRS': True,
+                'OPTIONS': {
+                    'context_processors': [
+                        'django.template.context_processors.request',
+                        'django.contrib.auth.context_processors.auth',
+                        'django.contrib.messages.context_processors.messages',
+                    ],
+                },
             },
         ],
         # HitCount Variables (default values)
@@ -60,12 +76,7 @@ def pytest_configure():
         HITCOUNT_KEEP_HIT_IN_DATABASE={'days': 30},
     )
 
-    try:
-        import django
-        django.setup()
-    except AttributeError:
-        pass
+    import django
+    django.setup()
 
-    # so we can reuse this function when testing directly from Django
-    # via: ./runtests.py --django
     return settings

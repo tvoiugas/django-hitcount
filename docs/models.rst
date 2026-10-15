@@ -7,6 +7,7 @@ If you would like to add a reverse lookup in your own model to its related ``Hit
 
 ::
 
+    from django.contrib.contenttypes.fields import GenericRelation
     from django.db import models
 
     from hitcount.models import HitCountMixin
@@ -25,6 +26,14 @@ If you would like to add a reverse lookup in your own model to its related ``Hit
     my_model = MyModel.objects.get(pk=1)
     my_model.hit_count.hits                 # total number of hits
     my_model.hit_count.hits_in_last(days=7) # number of hits in last seven days
+
+Any primary key type works: integers, UUIDs or strings (up to 255 characters).
+
+.. note:: Ordering or filtering by hits through the ``GenericRelation`` (as in
+   ``order_by("hit_count_generic__hits")``) is a database join.  For models with
+   a **UUID** primary key it only matches on databases with a native UUID type,
+   such as PostgreSQL; SQLite and MySQL store UUIDs as 32 hex characters, which
+   can't be joined to the string Django uses for generic relations.
 
 Customization
 -------------

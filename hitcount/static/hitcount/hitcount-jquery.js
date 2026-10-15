@@ -1,60 +1,50 @@
-$(document).ready(function() {
-  /**
-   * https://docs.djangoproject.com/en/dev/ref/contrib/csrf/#ajax
-   *
-   * Remember you will need to ensure csrf tokens by adding:
-   * @ensure_csrf_cookie to your views that require this javascript
-   *
-   * Also, you will probably want to include this with your other sitewide
-   * javascript files ... this is just an example.
-   */
-
-   if ( typeof hitcountJS === 'undefined' ) {
-    // since this is loaded on every page only do something
-    // if a hit is going to be counted
-    return;
-   }
-
-  var hitcountPK = hitcountJS['hitcountPK'];
-  var hitcountURL = hitcountJS['hitcountURL'];
-  var csrftoken = getCookie('csrftoken');
-
-  $.ajaxSetup({
-      beforeSend: function(xhr, settings) {
-          if (!csrfSafeMethod(settings.type) && !this.crossDomain) {
-              xhr.setRequestHeader("X-CSRFToken", csrftoken);
-          }
+/**
+ * Legacy companion for {% insert_hit_count_js_variables for [object] %}.
+ *
+ * Kept (despite the name) for sites that still include it: it no longer needs
+ * jQuery. New code should use {% insert_hit_count_js for [object] %} instead.
+ *
+ * Reads the global `hitcountJS` written by the template tag and POSTs the hit.
+ * The CSRF token is read from the "csrftoken" cookie, so the view rendering
+ * the page must set it (e.g. with @ensure_csrf_cookie).
+ */
+(function () {
+  function getCookie(name) {
+    var cookies = document.cookie ? document.cookie.split(";") : [];
+    for (var i = 0; i < cookies.length; i++) {
+      var cookie = cookies[i].trim();
+      if (cookie.substring(0, name.length + 1) === name + "=") {
+        return decodeURIComponent(cookie.substring(name.length + 1));
       }
-  });
-
-  $.post( hitcountURL, { "hitcountPK" : hitcountPK },
-    function(data, status) {
-
-      console.log(data); // just so you can see the response
-
-      if (data.status == 'error') {
-        // do something for error?
-      }
-    }, 'json');
-});
-
-function getCookie(name) {
-    var cookieValue = null;
-    if (document.cookie && document.cookie != '') {
-        var cookies = document.cookie.split(';');
-        for (var i = 0; i < cookies.length; i++) {
-            var cookie = jQuery.trim(cookies[i]);
-            // Does this cookie string begin with the name we want?
-            if (cookie.substring(0, name.length + 1) == (name + '=')) {
-                cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
-                break;
-            }
-        }
     }
-    return cookieValue;
-}
+    return null;
+  }
 
-function csrfSafeMethod(method) {
-    // these HTTP methods do not require CSRF protection
-    return (/^(GET|HEAD|OPTIONS|TRACE)$/.test(method));
-}
+  function countHit() {
+    if (typeof hitcountJS === "undefined") {
+      // loaded on every page: only do something if a hit is to be counted
+      return;
+    }
+
+    fetch(hitcountJS.hitcountURL, {
+      method: "POST",
+      credentials: "same-origin",
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+        "X-CSRFToken": getCookie("csrftoken") || "",
+        "X-Requested-With": "XMLHttpRequest"
+      },
+      body: "hitcountPK=" + encodeURIComponent(hitcountJS.hitcountPK)
+    }).then(function (response) {
+      return response.json();
+    }).then(function (data) {
+      console.log(data); // just so you can see the response
+    });
+  }
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", countHit);
+  } else {
+    countHit();
+  }
+})();

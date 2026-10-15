@@ -1,20 +1,14 @@
-# -*- coding: utf-8 -*-
-from __future__ import unicode_literals
-
 from datetime import timedelta
 from io import StringIO
+from unittest import mock
 
-try:
-    import unittest.mock as mock
-except ImportError:
-    import mock
-
-from django.utils import timezone
 from django.core.management import call_command
 from django.test import TestCase
+from django.utils import timezone
 
 from hitcount.models import Hit
 from hitcount.utils import get_hitcount_model
+
 from blog.models import Post
 
 COMMAND_NAME = 'hitcount_cleanup'
@@ -27,7 +21,7 @@ class HitCountCleanUp(TestCase):
     def setUp(self):
 
         post = Post.objects.create(title='hi', content='some text')
-        hit_count = HitCount.objects.create(content_object=post)
+        self.hit_count = hit_count = HitCount.objects.create(content_object=post)
 
         for x in range(10):
             created = timezone.now() - timedelta(days=x * 5)
@@ -43,7 +37,7 @@ class HitCountCleanUp(TestCase):
 
     def test_preserve_hitcount(self):
         """Removing Hits should not decrease the total HitCount."""
-        hit_count = HitCount.objects.get(pk=1)
+        hit_count = HitCount.objects.get(pk=self.hit_count.pk)
         call_command(COMMAND_NAME)
         self.assertEqual(hit_count.hits, 10)
 
@@ -51,3 +45,12 @@ class HitCountCleanUp(TestCase):
         out = StringIO()
         call_command(COMMAND_NAME, stdout=out)
         self.assertIn('Successfully removed 4 Hits', out.getvalue())
+
+
+class MigrationsTests(TestCase):
+
+    def test_no_missing_migrations(self):
+        """Model changes must ship with a migration."""
+        out = StringIO()
+        call_command('makemigrations', 'hitcount', check=True, dry_run=True, stdout=out)
+        self.assertIn('No changes detected', out.getvalue())

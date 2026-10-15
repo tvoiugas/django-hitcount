@@ -1,28 +1,17 @@
-# -*- coding: utf-8 -*-
-from __future__ import unicode_literals
-
-import warnings
 import json
 from datetime import timedelta
-
-try:
-    import unittest.mock as mock
-except ImportError:
-    import mock
-
 from importlib import import_module
+from unittest import mock
 
-from django.test import override_settings
 from django.conf import settings
-from django.contrib.auth.models import AnonymousUser, User, Group
+from django.contrib.auth.models import AnonymousUser, Group, User
 from django.http import Http404
-from django.test import TestCase, RequestFactory
+from django.test import RequestFactory, TestCase, override_settings
 from django.utils import timezone
 
 from hitcount.models import BlacklistIP, BlacklistUserAgent
-from hitcount.views import HitCountMixin, HitCountJSONView, HitCountDetailView
-from hitcount.views import _update_hit_count, update_hit_count_ajax
-from hitcount.utils import RemovedInHitCount13Warning, get_hitcount_model
+from hitcount.utils import get_hitcount_model
+from hitcount.views import HitCountDetailView, HitCountJSONView, HitCountMixin
 
 from blog.models import Post
 
@@ -151,7 +140,7 @@ class UpdateHitCountTests(HitCountTestBase):
         from the same IP until the limit is reached from that IP.
         """
         responses = []
-        for x in range(3):
+        for _ in range(3):
             # need a new session key each time.
             engine = import_module(settings.SESSION_ENGINE)
             store = engine.SessionStore()
@@ -278,17 +267,24 @@ class UpdateHitCountView(HitCountTestBase):
         self.assertEqual(response.context_data['hitcount']['pk'], self.hit_count.pk)
 
 
-class TestDeprecationWarning(HitCountTestBase):
-    """
-    Remove these tests when functions are removed in 1.3
-    """
+class HitCountJSONViewInputTests(HitCountTestBase):
 
-    def test_json_warning(self):
-        with warnings.catch_warnings(record=True) as w:
-            update_hit_count_ajax(self.request_post, self.hit_count)
-            self.assertTrue(issubclass(w[-1].category, RemovedInHitCount13Warning))
+    def post_hit(self, data):
+        request = self.factory.post(
+            '/', data,
+            REMOTE_ADDR="127.0.0.1",
+            HTTP_USER_AGENT='my_clever_agent',
+            HTTP_X_REQUESTED_WITH='XMLHttpRequest')
+        request.session = self.store
+        request.user = AnonymousUser()
+        return HitCountJSONView.as_view()(request)
 
-    def test_get_hit_count_warning(self):
-        with warnings.catch_warnings(record=True) as w:
-            _update_hit_count(self.request_post, self.hit_count)
-            self.assertTrue(issubclass(w[-1].category, RemovedInHitCount13Warning))
+    def test_missing_hitcount_pk(self):
+        response = self.post_hit({})
+        self.assertEqual(response.status_code, 400)
+
+    def test_non_numeric_hitcount_pk(self):
+        response = self.post_hit({'hitcountPK': 'not-a-number'})
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.content, b'HitCount object_pk not working')
+
